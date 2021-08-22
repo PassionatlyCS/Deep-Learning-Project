@@ -1,0 +1,386 @@
+Group Members: 
+
+1.	i15-0148 Muhammad Azeem
+2.	i16-0164 Usman Ali
+3.	i17-0045 Taha Suhail
+
+Link to the colab file: https://colab.research.google.com/drive/1JypCR-brEs7N51MaRvOEfObLlYuyyxn0?usp=sharing
+
+import warnings
+
+from matplotlib import pyplot
+from pandas import read_csv
+from sklearn.metrics import mean_squared_error
+from statsmodels.tsa.arima_model import ARIMA
+
+TRAINING_PERCENTAGE = 0.7
+TESTING_PERCENTAGE = 1 - TRAINING_PERCENTAGE
+NUMBER_OF_PREVIOUS_DATA_POINTS = 3
+LENGTH_DATA_SET = 0
+TRAINING_SET_LENGTH = 0
+TESTING_SET_LENGTH = 0
+
+
+def training_testing_buckets(raw_data, training_percentage, testing_percentage):
+    global TRAINING_SET_LENGTH, TESTING_SET_LENGTH
+    TRAINING_SET_LENGTH = int(LENGTH_DATA_SET * training_percentage)
+    TESTING_SET_LENGTH = LENGTH_DATA_SET - TRAINING_SET_LENGTH
+    training_set, testing_set = raw_data[0:TRAINING_SET_LENGTH], raw_data[TRAINING_SET_LENGTH:LENGTH_DATA_SET]
+    return training_set, testing_set
+
+
+def evaluate_performance_arima(testing_actual, testing_predict):
+    return mean_squared_error(testing_actual, testing_predict)
+
+
+def plot_arima(currency, testing_actual, testing_predict, file_name):
+    actual = pyplot.plot(testing_actual, label="Real data points", color="orange")
+    testing = pyplot.plot(testing_predict, label="Testing prediction", color="red")
+
+    pyplot.ylabel('currency values for 1 USD')
+    pyplot.xlabel('number of days')
+    pyplot.title('USD/' + currency + ' : actual vs predicted using ARIMA')
+
+    pyplot.legend()
+    # pyplot.show()
+    pyplot.savefig(file_name)
+    pyplot.clf()
+
+
+def load_data_set(currency):
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = data_set_frame.columns.values.tolist()
+    currency_index = column_headers.index('USD/' + currency.upper()) + 1
+
+    data_file = read_csv("currency_prediction_data_set.csv", usecols=[currency_index], engine='python')
+    # the type of data_file is a matrix, as returned by pandas
+    raw_data = []  # need to convert a matrix values to a simple list of values
+    for data_point in data_file.values.tolist():
+        raw_data.append(data_point[0])
+    global LENGTH_DATA_SET
+    LENGTH_DATA_SET = len(raw_data)
+    return raw_data
+
+
+def build_model_predict_arima(training_set, testing_set):
+    testing_predict = list()
+    training_predict = list(training_set)
+    for testing_set_index in range(TESTING_SET_LENGTH):
+        arima = ARIMA(training_predict, order=(5, 1, 0))
+        arima_model = arima.fit(disp=0)
+        forecasting = arima_model.forecast()[0].tolist()[0]
+        testing_predict.append(forecasting)
+        training_predict.append(testing_set[testing_set_index])
+        # print("Predicted = ", testing_predict[-1], "Expected = ", testing_set[testing_set_index])
+
+    print('predicting...')
+    print('\t The prediction for the next day:', arima_model.forecast()[0])
+    # for future_day_i in range(7):
+    #     # if future_day_i == 0 or future_day_i == 2 or future_day_i == 7:
+    #     forecasting = arima_model.forecast()[0]
+    #     print('day', future_day_i + 1, forecasting)
+    #     training_predict.append(forecasting)
+    #     arima = ARIMA(training_predict, order=(3, 1, 1))
+    #     arima_model = arima.fit(disp=0)
+
+    return testing_predict
+
+
+def arima_model(currency):
+    print('\nARIMA Model')
+
+    print('loading the dataset...')
+    raw_data = load_data_set(currency)
+
+    print('splitting training and testing set...')
+    training_actual_arima, testing_actual_arima = training_testing_buckets(raw_data, TRAINING_PERCENTAGE,
+                                                                           TESTING_PERCENTAGE)
+
+    print('building and training model...')
+    testing_predict_arima = build_model_predict_arima(training_actual_arima, testing_actual_arima)
+
+    print('evaluating performance...')
+    mse_arima = evaluate_performance_arima(testing_actual_arima, testing_predict_arima)
+    print('\t Testing Mean Square Error:', mse_arima)
+
+    with open("mse_arima.txt", 'w') as mse_file:
+        mse_file.write(str(mse_arima) + '\n')
+
+    print('plotting the graph...')
+    plot_arima(currency, testing_actual_arima, testing_predict_arima, "testing_prediction_arima.pdf")
+
+    print('done...')
+    return raw_data, testing_predict_arima
+
+
+if __name__ == '__main__':
+    warnings.filterwarnings("ignore")
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = str([cur[4:] for cur in data_set_frame.columns.values.tolist()])
+    currency = input('Enter any one of ' + column_headers + ' currencies\n').strip()
+    arima_model(currency)  # setting the entry point
+<-----------------------------------------> File 1 eof
+import warnings
+
+import numpy
+from keras.layers import Dense
+from keras.models import Sequential
+from matplotlib import pyplot
+from pandas import read_csv
+
+TRAINING_PERCENTAGE = 0.7
+TESTING_PERCENTAGE = 1 - TRAINING_PERCENTAGE
+NUMBER_OF_PREVIOUS_DATA_POINTS = 3
+LENGTH_DATA_SET = 0
+numpy.random.seed(7)
+TRAINING_SET_LENGTH = 0
+TESTING_SET_LENGTH = 0
+
+
+def training_testing_buckets(raw_data, training_percentage, testing_percentage):
+    global TRAINING_SET_LENGTH, TESTING_SET_LENGTH
+    TRAINING_SET_LENGTH = int(LENGTH_DATA_SET * training_percentage)
+    TESTING_SET_LENGTH = LENGTH_DATA_SET - TRAINING_SET_LENGTH
+    training_set, testing_set = raw_data[0:TRAINING_SET_LENGTH], raw_data[TRAINING_SET_LENGTH:LENGTH_DATA_SET]
+    return training_set, testing_set
+
+
+def modify_data_set_rnn(training_set, testing_set):
+    train_actual = []
+    train_predict = []
+    for interval in range(len(training_set) - NUMBER_OF_PREVIOUS_DATA_POINTS - 1):
+        train_actual.append(training_set[interval: interval + NUMBER_OF_PREVIOUS_DATA_POINTS])
+        train_predict.append(training_set[interval + NUMBER_OF_PREVIOUS_DATA_POINTS])
+
+    test_actual = []
+    test_predict = []
+    for interval in range(len(testing_set) - NUMBER_OF_PREVIOUS_DATA_POINTS - 1):
+        test_actual.append(testing_set[interval: interval + NUMBER_OF_PREVIOUS_DATA_POINTS])
+        test_predict.append(testing_set[interval + NUMBER_OF_PREVIOUS_DATA_POINTS])
+
+    return train_actual, train_predict, test_actual, test_predict
+
+
+def load_data_set(currency):
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = data_set_frame.columns.values.tolist()
+    currency_index = column_headers.index('USD/' + currency.upper()) + 1
+
+    data_file = read_csv("currency_prediction_data_set.csv", usecols=[currency_index], engine='python')
+    # the type of data_file is a matrix, as returned by pandas
+    raw_data = []  # need to convert a matrix values to a simple list of values
+    for data_point in data_file.values.tolist():
+        raw_data.append(data_point[0])
+    global LENGTH_DATA_SET
+    LENGTH_DATA_SET = len(raw_data)
+    return raw_data
+
+
+def build_recurrent_neural_network(train_actual, train_predict):
+    recurrent_neural_network = Sequential()
+
+    recurrent_neural_network.add(Dense(12, input_dim=NUMBER_OF_PREVIOUS_DATA_POINTS, activation="relu"))
+    recurrent_neural_network.add(Dense(8, activation="relu"))
+    recurrent_neural_network.add(Dense(1))
+
+    recurrent_neural_network.compile(loss='mean_squared_error', optimizer='adam')
+    recurrent_neural_network.fit(train_actual, train_predict, epochs=50, batch_size=2, verbose=2)
+
+    return recurrent_neural_network
+
+
+def predict_rnn(recurrent_neural_network, train_actual, test_actual):
+    training_predict, testing_predict = recurrent_neural_network.predict(train_actual), \
+                                        recurrent_neural_network.predict(test_actual)
+
+    # print(recurrent_neural_network.predict(test_actual, batch_size=2))
+    # print(training_predict, testing_predict)
+    print('\t The prediction for the next day:', testing_predict[-1])
+    return training_predict, testing_predict
+
+
+def evaluate_performance_rnn(recurrent_neural_network, train_actual, train_predict, test_actual, test_predict):
+    # mse_training = recurrent_neural_network.evaluate(train_actual, train_predict, verbose=0)
+    mse_testing = recurrent_neural_network.evaluate(test_actual, test_predict, verbose=0)
+    print('\t Testing Mean Square Error:', mse_testing)
+
+    with open("mse_rnn.txt", 'w') as mse_file:
+        mse_file.write(str(mse_testing) + '\n')
+
+
+def plot_rnn(currency, raw_data, training_predict, testing_predict, file_name):
+    training_data_trend = [None] * LENGTH_DATA_SET
+    testing_data_trend = [None] * LENGTH_DATA_SET
+
+    training_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(training_predict[:, 0])
+    testing_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS - 1:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(testing_predict[:, 0])
+
+    actual = pyplot.plot(raw_data[int(TRAINING_PERCENTAGE * LENGTH_DATA_SET):], label="Actual data points",
+                         color="blue")
+    # training = pyplot.plot(training_data_trend, label="Training prediction", color="green")
+    testing = pyplot.plot(testing_data_trend, label="Testing prediction", color="blue")
+
+    pyplot.ylabel('currency values for 1 USD')
+    pyplot.xlabel('number of days')
+    pyplot.title('USD/' + currency + ' : actual vs predicted using RNN')
+
+    pyplot.legend()
+    # pyplot.show()
+    pyplot.savefig(file_name)
+    pyplot.clf()
+
+
+def rnn_model(currency):
+    print('\nNeural Network Model')
+
+    print('loading the dataset...')
+    raw_data = load_data_set(currency)
+
+    print('splitting training and testing set...')
+    training_set, testing_set = training_testing_buckets(raw_data, TRAINING_PERCENTAGE, TESTING_PERCENTAGE)
+    train_actual, train_predict, test_actual, test_predict = modify_data_set_rnn(training_set, testing_set)
+
+    print('building and training model...')
+    rnn = build_recurrent_neural_network(train_actual, train_predict)
+
+    print('predicting...')
+    training_predict, testing_predict = predict_rnn(rnn, train_actual, test_actual)
+
+    print('evaluating performance...')
+    evaluate_performance_rnn(rnn, train_actual, train_predict, test_actual, test_predict)
+
+    print('plotting the graph...')
+    plot_rnn(currency, raw_data, training_predict, testing_predict, "testing_prediction_rnn.pdf")
+
+    print('done...')
+    return training_predict, testing_predict
+
+
+if __name__ == '__main__':
+    warnings.filterwarnings("ignore")
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = str([cur[4:] for cur in data_set_frame.columns.values.tolist()])
+    currency = input('Enter any one of ' + column_headers + ' currencies\n').strip()
+    rnn_model(currency)  # setting the entry point
+<-----------------------------------------> File 2 eof
+import warnings
+
+from arima import *
+from matplotlib import pyplot
+from pandas import read_csv
+from rnn import *
+
+TRAINING_PERCENTAGE = 0.7
+TESTING_PERCENTAGE = 1 - TRAINING_PERCENTAGE
+NUMBER_OF_PREVIOUS_DATA_POINTS = 3
+LENGTH_DATA_SET = 0
+TRAINING_SET_LENGTH = 0
+TESTING_SET_LENGTH = 0
+
+
+def plot(currency, raw_data, training_predict, testing_predict, testing_predict_arima, file_name):
+    global LENGTH_DATA_SET
+    LENGTH_DATA_SET = len(raw_data)
+    training_data_trend = [None] * LENGTH_DATA_SET
+    testing_data_trend = [None] * LENGTH_DATA_SET
+
+    training_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(training_predict[:, 0])
+    testing_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS - 1:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(testing_predict[:, 0])
+
+    actual = pyplot.plot(raw_data[int(TRAINING_PERCENTAGE * LENGTH_DATA_SET):], label="Actual data points",
+                         color="blue")
+    testing_rnn = pyplot.plot(testing_data_trend, label="Testing prediction RNN", color="black")
+    testing_arima = pyplot.plot(testing_predict_arima, label="Testing prediction ARIMA", color="purple")
+
+    pyplot.ylabel('currency values for 1 USD')
+    pyplot.xlabel('number of days')
+    pyplot.title('USD/' + currency + ' : actual vs predicted')
+
+    pyplot.legend()
+    # pyplot.show()
+    pyplot.savefig(file_name)
+    pyplot.clf()
+
+
+def main():
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = str([cur[4:] for cur in data_set_frame.columns.values.tolist()])
+    currency = input('Enter any one of ' + column_headers + ' currencies \n').strip()
+
+    raw_data, testing_predict_arima = arima_model(currency)
+    training_predict, testing_predict = rnn_model(currency)
+    print('Plotting combined graph of both the models...')
+    plot(currency, raw_data, training_predict, testing_predict, testing_predict_arima,
+         "testing_prediction_arima_and_rnn.pdf")
+
+
+if __name__ == '__main__':
+    warnings.filterwarnings("ignore")
+    main()  # setting the entry point
+import warnings
+
+from arima import *
+from matplotlib import pyplot
+from pandas import read_csv
+from rnn import *
+
+TRAINING_PERCENTAGE = 0.7
+TESTING_PERCENTAGE = 1 - TRAINING_PERCENTAGE
+NUMBER_OF_PREVIOUS_DATA_POINTS = 3
+LENGTH_DATA_SET = 0
+TRAINING_SET_LENGTH = 0
+TESTING_SET_LENGTH = 0
+
+
+def plot(currency, raw_data, training_predict, testing_predict, testing_predict_arima, file_name):
+    global LENGTH_DATA_SET
+    LENGTH_DATA_SET = len(raw_data)
+    training_data_trend = [None] * LENGTH_DATA_SET
+    testing_data_trend = [None] * LENGTH_DATA_SET
+
+    training_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(training_predict[:, 0])
+    testing_data_trend[NUMBER_OF_PREVIOUS_DATA_POINTS - 1:len(training_predict) + NUMBER_OF_PREVIOUS_DATA_POINTS] = \
+        list(testing_predict[:, 0])
+
+    actual = pyplot.plot(raw_data[int(TRAINING_PERCENTAGE * LENGTH_DATA_SET):], label="Actual data points",
+                         color="blue")
+    testing_rnn = pyplot.plot(testing_data_trend, label="Testing prediction RNN", color="black")
+    testing_arima = pyplot.plot(testing_predict_arima, label="Testing prediction ARIMA", color="purple")
+
+    pyplot.ylabel('currency values for 1 USD')
+    pyplot.xlabel('number of days')
+    pyplot.title('USD/' + currency + ' : actual vs predicted')
+
+    pyplot.legend()
+    # pyplot.show()
+    pyplot.savefig(file_name)
+    pyplot.clf()
+
+
+def main():
+    data_set_frame = read_csv('currency_prediction_data_set.csv', header=0,
+                              index_col=0, squeeze=True)
+    column_headers = str([cur[4:] for cur in data_set_frame.columns.values.tolist()])
+    currency = input('Enter any one of ' + column_headers + ' currencies \n').strip()
+
+    raw_data, testing_predict_arima = arima_model(currency)
+    training_predict, testing_predict = rnn_model(currency)
+    print('Plotting combined graph of both the models...')
+    plot(currency, raw_data, training_predict, testing_predict, testing_predict_arima,
+         "testing_prediction_arima_and_rnn.pdf")
+
+
+if __name__ == '__main__':
+    warnings.filterwarnings("ignore")
+    main()  # setting the entry point
+<-----------------------------------------> File 3 eof
